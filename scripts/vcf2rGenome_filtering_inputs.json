@@ -1,0 +1,53 @@
+{
+  "vmem": 32,
+  "cores": 8,
+  "h_rt1": 05:00:00,
+  "h_rt2": 20:00:00,
+  "h_rt3": 05:00:00,
+  "nTasks": 50,
+  
+  "wd": "/Users/pam3650//Documents/Github/PvGTSeq_paper_draft/PvWGS",
+  "fd": "/Users/pam3650//Documents/Github/Plasmodium_WGS_analysis/functions_libraries",
+  "vcf_file": "/Users/pam3650/Documents/Github/PvGTSeq_paper_draft/PvWGS/Pan_no_missing.recode.vcf",
+  "output": "Panama_PvGSeq_Regions",
+  
+  "HardFilteringReport": false,
+  "non_ref_ac_any": NaN,
+  "remove_filtered_all": false,
+  "include_from_gff": NaN,
+  "exclude_from_gff": NaN,
+  "ref_gff_file": NaN,
+  "bed": NaN,
+  "exclude_bed": NaN,
+  "keep_regexp": NaN,
+  
+  "positions": "PvGTSeq249_positions_v1.bed",
+  
+  "do_vcf2rGenome": true,
+  "coverage_data": true,
+
+  "nchunks": 500,
+  "ReadDepthThreshold": 5,
+  
+  "metadata": "Pviv_ColPerVen_metadata.csv", 
+  "join_by": "Sample_id",
+  "pop": "Country",
+  
+  "post_filtering": false,
+  
+  "type_of_polymorphism_to_remove": "INDEL:Homopolymer;INDEL:Dinucleotide_STR",
+  
+  "sample_ampl_rate":  0.5,
+  "locus_ampl_rate": 0.75,
+
+  "ObsHet_quantile": 0.975,
+  "SNP_density_quantile": 0.95,
+  
+  "alignment_filter": "or",
+  
+  "mask_formula": "h_ij>=0.66&h_ijminor>=0.9"
+  
+}
+
+
+
