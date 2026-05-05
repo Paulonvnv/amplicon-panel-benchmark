@@ -1,5 +1,10 @@
 
 
+source('~/Documents/Github/MHap-Analysis/docs/functions_and_libraries/amplseq_required_libraries.R')
+source('~/Documents/Github/Plasmodium_WGS_analysis/functions_libraries/rGenome_functions.R')
+source('~/Documents/Github/MHap-Analysis/docs/functions_and_libraries/amplseq_functions.R')
+sourceCpp('~/Documents/Github/MHap-Analysis/docs/functions_and_libraries/Rcpp_functions.cpp')
+sourceCpp('~/Documents/Github/MHap-Analysis/docs/functions_and_libraries/hmmloglikelihood.cpp')
 
 
 # rhAmpSeq ----
@@ -16,7 +21,7 @@ amplicon = 1
 
 rhAmpSeq_coordinates = NULL
 for(amplicon in 1:nrow(rhAmpSeq_markers)){
-  amplicon_chromosome = gsub('v2$', 'v1', rhAmpSeq_markers[amplicon,][['chromosome']])
+  amplicon_chromosome = rhAmpSeq_markers[amplicon,][['chromosome']]
   amplicon_start = rhAmpSeq_markers[amplicon,][['start']]
   amplicon_end = rhAmpSeq_markers[amplicon,][['end']]
   
@@ -26,103 +31,107 @@ for(amplicon in 1:nrow(rhAmpSeq_markers)){
   
 }
 
-rhAmpSeq_rGenome = read_rGenome('~/Documents/Github/PvGTSeq_paper_draft/Pv_Amplicon_data/all_broad_Pv4_rhAmpSeq_rGenome/', 
+# load or generate rGenome object----
+
+rhAmpSeq_rGenome = read_rGenome('~/Documents/Github/PvGTSeq_paper_draft/Pv_Amplicon_data/all_all_samples_rhAmpSeq_rGenome', 
                                format = 'tsv',
                                sep = '\t')
 
-
-rownames(rhAmpSeq_rGenome@gt)
-
-
-sum(duplicated(rhAmpSeq_rGenome@metadata$Sample_id))
-colnames(rhAmpSeq_rGenome@gt) = rhAmpSeq_rGenome@metadata$Sample_id
-
-sum(rownames(rhAmpSeq_rGenome@metadata) != colnames(rhAmpSeq_rGenome@gt))
-
-
-sum(!(rhAmpSeq_rGenome@metadata$Sample_id %in% All_broad_Pv4_PvGTSeq_metadata$Sample_id))
-
-
-rhAmpSeq_rGenome@metadata = left_join(rhAmpSeq_rGenome@metadata,
-                                      All_broad_Pv4_PvGTSeq_metadata,
-                                     by = 'Sample_id')
-
-sum(duplicated(rhAmpSeq_rGenome@metadata$PvGTSeq_id))
-
-rhAmpSeq_rGenome = filter_samples(rhAmpSeq_rGenome,
-                                 !(duplicated(rhAmpSeq_rGenome@metadata$PvGTSeq_id)))
-
-sum(duplicated(rhAmpSeq_rGenome@metadata$PvGTSeq_id))
-
-monoclonals = monoclonals_PvBroad_SelectedPos2_01SNPsbiallelic_75_loci@metadata$Sample_id
-
-sum(!(monoclonals %in% rhAmpSeq_rGenome@metadata$PvGTSeq_id))
-
-monoclonals[!(monoclonals %in% rhAmpSeq_rGenome@metadata$Sample_id)]
-
-monoclonals[!(monoclonals %in% rhAmpSeq_rGenome@metadata$PvGTSeq_id)]
-
-rhAmpSeq_rGenome@metadata %<>% mutate(
-  Old_Sample_id = Sample_id,
-  Sample_id = PvGTSeq_id
-)
-
-colnames(rhAmpSeq_rGenome@gt) = rhAmpSeq_rGenome@metadata$Sample_id
-rownames(rhAmpSeq_rGenome@metadata) = rhAmpSeq_rGenome@metadata$Sample_id
-
-
 names(rhAmpSeq_rGenome@metadata)
 
+sum(colnames(rhAmpSeq_rGenome@gt) != rhAmpSeq_rGenome@metadata$Sample_id)
+colnames(rhAmpSeq_rGenome@gt) = rhAmpSeq_rGenome@metadata$Sample_id
 
-rhAmpSeq_rGenome@metadata %<>% mutate(
-  site_of_collection_world_region = 
-    case_when(grepl('Latin', possible_site_of_infection_world_region) ~ 'LAC',
-              site_of_collection_snl0  == 'Thailand' ~ 'WSEA',
-              site_of_collection_snl0 == 'China' ~ 'EAS',
-              site_of_collection_snl0 == 'Bangladesh' ~ 'WSEA',
-              site_of_collection_snl0 == 'Bhutan' ~ 'WSEA',
-              site_of_collection_snl0 == 'Madagascar' ~ 'AF',
-              site_of_collection_snl0 == 'Mauritania' ~ 'AF',
-              site_of_collection_snl0 == 'Myanmar' ~ 'WSEA',
-              site_of_collection_snl0 == 'North Korea' ~ 'EAS',
-              site_of_collection_snl0 == 'Sudan' ~ 'AF',
-              possible_site_of_infection_world_region == '' & site_of_collection_snl0 == 'Panama' ~ 'LAC',
-              possible_site_of_infection_world_region == '' & site_of_collection_snl0 == 'Venezuela' ~ 'LAC',
-              possible_site_of_infection_world_region == '' & site_of_collection_snl0 == 'Guyana' ~ 'LAC',
-              possible_site_of_infection_world_region == 'West Africa' ~ 'AF',
-              possible_site_of_infection_world_region == 'Asia' ~ 'WAS',
-              .default = possible_site_of_infection_world_region))
+# Verify that there are no duplicated samples per individual----
+
+sum(duplicated(rhAmpSeq_rGenome@metadata$metadata_id))
+
+# Filter out samples----
+
+rhAmpSeq_rGenome@metadata %>%
+  summarise(nSamples = n(), 
+            .by = c(batch, site_of_collection_world_region, site_of_collection_snl0, country)) %>%
+  arrange(batch, site_of_collection_world_region, site_of_collection_snl0)
+
+
+
+rhAmpSeq_rGenome = 
+  filter_samples(rhAmpSeq_rGenome,
+                 (rhAmpSeq_rGenome@metadata$PvGTSeq_SampAmpRate >= .75 &
+                    rhAmpSeq_rGenome@metadata$PvAmpliSeq_SampAmpRate >= .75 &
+                    rhAmpSeq_rGenome@metadata$rhAmpSeq_SampAmpRate >= .75 &
+                    rhAmpSeq_rGenome@metadata$WGS_SampAmpRate >= .75))
+
+
+rhAmpSeq_rGenome = filter_samples(rhAmpSeq_rGenome,
+                                 !(
+                                   rhAmpSeq_rGenome@metadata$batch %in% c('Duraisingh', 'Ancient') |
+                                     rhAmpSeq_rGenome@metadata$site_of_collection_snl0 %in% c('P. simium', 'Unknown')
+                                 ))
+
+rhAmpSeq_rGenome@metadata %>%
+  summarise(nSamples = n(), 
+            .by = c(site_of_collection_world_region, site_of_collection_snl0)) %>%
+  arrange(site_of_collection_world_region, site_of_collection_snl0)
 
 dim(rhAmpSeq_rGenome@gt)
+
+
+
+# Keep only positions for geographic differentiation---
+
+sum(rownames(rhAmpSeq_rGenome@gt) %in% rhAmpSeq_coordinates)
 
 rhAmpSeq_rGenome = filter_loci(rhAmpSeq_rGenome, v = rownames(rhAmpSeq_rGenome@gt) %in% rhAmpSeq_coordinates)
 
 dim(rhAmpSeq_rGenome@gt)
+
+# Check number of amplicons covered----
+
+rhAmpSeq_rGenome@loci_table$amplicon = unlist(c(sapply(1:nrow(rhAmpSeq_rGenome@loci_table), function(i){
+  
+  variant_site_chromosome = rhAmpSeq_rGenome@loci_table[i, ][['CHROM']]
+  variant_site_position = rhAmpSeq_rGenome@loci_table[i, ][['POS']]
+  
+  rhAmpSeq_markers[rhAmpSeq_markers$chromosome == variant_site_chromosome &
+                       rhAmpSeq_markers$start <= variant_site_position &
+                       rhAmpSeq_markers$end >= variant_site_position,
+  ][['amplicon']][1]
+  
+}, simplify = T)))
+
+
+print(paste0('the number of amplicons with partial coverage in the data set is: ', length(unique(rhAmpSeq_rGenome@loci_table$amplicon))))
 
 # Update allele frequencies and remove monomorphic sites----
 
 rhAmpSeq_rGenome = update_allele_lables(rhAmpSeq_rGenome, n = 10)
 
 ## Remove monomorphic sites----
+dim(rhAmpSeq_rGenome@gt)
 rhAmpSeq_rGenome = filter_loci(rhAmpSeq_rGenome, 
                               v = rhAmpSeq_rGenome@loci_table$Cardinality > 1)
 
 dim(rhAmpSeq_rGenome@gt)
+print(paste0('the number of amplicons with partial coverage in the data set is: ', length(unique(rhAmpSeq_rGenome@loci_table$amplicon))))
 
 # Calculate amplification rate per Loci-----
 rhAmpSeq_rGenome@loci_table$Locus_Ampl_Rate = LocusAmplRate(rhAmpSeq_rGenome, update = F)
 
 min(rhAmpSeq_rGenome@loci_table$Locus_Ampl_Rate)
 
+rhAmpSeq_rGenome@loci_table %>%
+  ggplot(aes(x = Locus_Ampl_Rate))+
+  geom_histogram()
+
 ## Remove loci with less than 50% of genome coverage----
-rhAmpSeq_rGenome = filter_loci(rhAmpSeq_rGenome, 
-                              v = rhAmpSeq_rGenome@loci_table$Locus_Ampl_Rate >= .75)
+# rhAmpSeq_rGenome = filter_loci(rhAmpSeq_rGenome, 
+#                               v = rhAmpSeq_rGenome@loci_table$Locus_Ampl_Rate >= .75)
+# 
+# dim(rhAmpSeq_rGenome@gt)
+# print(paste0('the number of amplicons with partial coverage in the data set is: ', length(unique(rhAmpSeq_rGenome@loci_table$amplicon))))
 
-dim(rhAmpSeq_rGenome@gt)
-
-names(rhAmpSeq_rGenome@metadata)
-
-# Identify the type of polymophism of the variant site----
+# Identify the type of polymorphism of the variant site----
 rhAmpSeq_rGenome@loci_table$type_of_polymorphism = get_type_of_polymorphism(rhAmpSeq_rGenome)
 
 unique(rhAmpSeq_rGenome@loci_table$type_of_polymorphism)
@@ -134,18 +143,91 @@ rhAmpSeq_rGenome =
                       c('INDEL:Homopolymer', 'INDEL:Dinucleotide_STR')))
 
 dim(rhAmpSeq_rGenome@gt)
+print(paste0('the number of amplicons with partial coverage in the data set is: ', length(unique(rhAmpSeq_rGenome@loci_table$amplicon))))
 
-# Keep monoclonal samples with 75% of wgs covirage----
 
-length(monoclonals_PvBroad_SelectedPos2_rGenome_01SNPsbiallelic_75@metadata$Sample_id)
+# Calculate minor allele frequency----
+
+rhAmpSeq_major_freq = sapply(rhAmpSeq_rGenome@loci_table$Allele_Counts, function(allele_counts){
+  counts = as.numeric(unlist(str_split(gsub('\\d+:', '', allele_counts), ',')))
+  freqs = counts/sum(counts)
+  major_freq = max(freqs)
+})
+
+max(rhAmpSeq_major_freq)
+
+
+dim(rhAmpSeq_rGenome@gt)
+
+rhAmpSeq_rGenome@loci_table$major_freq = rhAmpSeq_major_freq
+
+sum(rhAmpSeq_major_freq <= 1 - 5/ncol(rhAmpSeq_rGenome@gt))
+
+rhAmpSeq_rGenome = filter_loci(rhAmpSeq_rGenome, 
+                                 v = rhAmpSeq_rGenome@loci_table$major_freq <= 1 - 5/ncol(rhAmpSeq_rGenome@gt))
+
+
+dim(rhAmpSeq_rGenome@gt)
+print(paste0('the number of amplicons with partial coverage in the data set is: ', length(unique(rhAmpSeq_rGenome@loci_table$amplicon))))
+
+# Keep monoclonal samples with 75% of wgs coverage----
+
+monoclonals_Pv_all_samples = unlist(read.table('~/Documents/Github/PvGTSeq_paper_draft/Outputs/monoclonals_Pv_all_samples.bed',
+                                               header = F,
+                                               sep = '\t'
+))
+
+names(monoclonals_Pv_all_samples) = NULL
+
+sum(!(monoclonals_Pv_all_samples %in% rhAmpSeq_rGenome@metadata$Sample_id))
+
+rhAmpSeq_rGenome@metadata %<>% mutate(
+  Clonality = case_when(
+    Sample_id %in% monoclonals_Pv_all_samples ~ 'Monoclonal',
+    .default = 'Polyclonal'
+  )
+)
+
+
+rhAmpSeq_rGenome_biallelic_SNPs = filter_loci(rhAmpSeq_rGenome,
+                                             (rhAmpSeq_rGenome@loci_table$type_of_polymorphism == 'SNP' &
+                                                rhAmpSeq_rGenome@loci_table$Cardinality == 2
+                                             ))
+
+dim(rhAmpSeq_rGenome_biallelic_SNPs@gt)
+print(paste0('the number of amplicons with partial coverage in the data set is: ', length(unique(rhAmpSeq_rGenome_biallelic_SNPs@loci_table$amplicon))))
+
+
+
+rhAmpSeq_rGenome@metadata$Fws = get_Fws_rGenome(rhAmpSeq_rGenome_biallelic_SNPs)
+rhAmpSeq_rGenome@metadata$ObsHet = get_ObsHet(rhAmpSeq_rGenome_biallelic_SNPs, by = 'sample')
+
+rhAmpSeq_rGenome@metadata %>%
+  ggplot(aes(x = ObsHet, y = Fws, color = Clonality)) + 
+  geom_point() +
+  geom_vline(xintercept = 0.0125)+
+  geom_hline(yintercept = .95)+
+  scale_y_continuous(limits = c(0, 1))
+
+
+# rhAmpSeq_rGenome@metadata %>%
+#   summarise(nMonoclonals = sum(Fws >= .95 & ObsHet <= 0.0125),
+#             nPolyclonals = sum(Fws < .95 | ObsHet > 0.0125),
+#             nSamples = n(),
+#             .by = site_of_collection_snl0)
+# 
+# 
+# rhAmpSeq_rGenome@metadata %<>%
+#   mutate(Clonality = case_when(
+#     Fws >= .95 & ObsHet <= 0.0125 ~ 'Monoclonal',
+#     Fws < .95 | ObsHet > 0.0125 ~ 'Polyclonal'))
 
 
 monoclonals_rhAmpSeq_rGenome = 
   filter_samples(rhAmpSeq_rGenome,
-                 rhAmpSeq_rGenome@metadata$Sample_id %in% monoclonals)
+                 rhAmpSeq_rGenome@metadata$Clonality == 'Monoclonal')
 
 dim(monoclonals_rhAmpSeq_rGenome@gt)
-
 
 # Update allele frequencies and remove monomorphic sites----
 
@@ -159,7 +241,7 @@ monoclonals_rhAmpSeq_rGenome = filter_loci(monoclonals_rhAmpSeq_rGenome,
                                           v = monoclonals_rhAmpSeq_rGenome@loci_table$Cardinality > 1)
 
 dim(monoclonals_rhAmpSeq_rGenome@gt)
-
+print(paste0('the number of amplicons with partial coverage in the data set is: ', length(unique(monoclonals_rhAmpSeq_rGenome@loci_table$amplicon))))
 
 # Calculate minor allele frequency
 rhAmpSeq_major_freq = sapply(monoclonals_rhAmpSeq_rGenome@loci_table$Allele_Counts, function(allele_counts){
@@ -174,12 +256,13 @@ max(rhAmpSeq_major_freq)
 
 monoclonals_rhAmpSeq_rGenome@loci_table$major_freq = rhAmpSeq_major_freq
 
-sum(monoclonals_rhAmpSeq_rGenome@loci_table$major_freq <= 1 - 5/1023)
+sum(monoclonals_rhAmpSeq_rGenome@loci_table$major_freq <= 1 - 5/ncol(monoclonals_rhAmpSeq_rGenome@gt))
 
 monoclonals_rhAmpSeq_rGenome = filter_loci(monoclonals_rhAmpSeq_rGenome, 
-                                          v = monoclonals_rhAmpSeq_rGenome@loci_table$major_freq <= 1 - 5/1023)
+                                          v = monoclonals_rhAmpSeq_rGenome@loci_table$major_freq <= 1 - 5/ncol(monoclonals_rhAmpSeq_rGenome@gt))
 
 dim(monoclonals_rhAmpSeq_rGenome@gt)
+print(paste0('the number of amplicons with partial coverage in the data set is: ', length(unique(monoclonals_rhAmpSeq_rGenome@loci_table$amplicon))))
 
 monoclonals_rhAmpSeq_rGenome@metadata$sample_ampl_rate = SampleAmplRate(monoclonals_rhAmpSeq_rGenome, update = F)
 
@@ -187,12 +270,9 @@ monoclonals_rhAmpSeq_rGenome@metadata %>%
   ggplot(aes(x = sample_ampl_rate)) +
   geom_histogram()
 
-monoclonals_rhAmpSeq_rGenome = filter_samples(monoclonals_rhAmpSeq_rGenome,
-                                             monoclonals_rhAmpSeq_rGenome@metadata$sample_ampl_rate >= .75)
-
 # Create loci object----
 
-monoclonals_rhAmpSeq_gt = gsub('_\\d+', '', gsub(':\\d+', '', monoclonals_rhAmpSeq_rGenome@gt))
+monoclonals_rhAmpSeq_gt = gsub('/\\d+', '', gsub(':\\d+', '', monoclonals_rhAmpSeq_rGenome@gt))
 
 monoclonals_rhAmpSeq_gt = t(monoclonals_rhAmpSeq_gt)
 
@@ -211,7 +291,7 @@ dim(monoclonals_rhAmpSeq_loci@loci_table)
 
 
 monoclonals_rhAmpSeq_loci@markers = 
-  monoclonals_rhAmpSeq_rGenome@loci_table %>% rename('CHROM' = 'chromosome',
+  monoclonals_rhAmpSeq_rGenome@loci_table %>% S4Vectors::rename('CHROM' = 'chromosome',
                                                     'POS' = 'pos')
 
 
@@ -221,9 +301,9 @@ rownames(monoclonals_rhAmpSeq_loci@loci_table)
 
 # Monoclonal pairs ----
 
-Monoclonals = monoclonals_rhAmpSeq_loci@metadata$Sample_id
+rhAmpSeq_Monoclonals = monoclonals_rhAmpSeq_loci@metadata$Sample_id
 
-rhAmpSeq_Monoclonal_pairs = as.data.frame(t(combn(Monoclonals, 2)))
+rhAmpSeq_Monoclonal_pairs = as.data.frame(t(combn(rhAmpSeq_Monoclonals, 2)))
 
 names(rhAmpSeq_Monoclonal_pairs) = c('Yi', 'Yj')
 
@@ -249,13 +329,13 @@ names(rhAmpSeq_Monoclonal_pairs) = c('Yi', 'Yj', 'Yi_site_of_collection_snl0', '
 if(!file.exists('~/Documents/Github/PvGTSeq_paper_draft/Outputs/Monoclonal_pairs_rhAmpSeq_01SNPsbiallelic_75_IBD.csv')){
   
   Monoclonal_pairs_rhAmpSeq_01SNPsbiallelic_75_IBD = NULL
-  for(w in 1:1000){
+  for(w in 1:10000){
     start_time = Sys.time()
     Monoclonal_pairs_rhAmpSeq_01SNPsbiallelic_75_IBD = 
       rbind(Monoclonal_pairs_rhAmpSeq_01SNPsbiallelic_75_IBD,
             pairwise_hmmIBD(
               obj = monoclonals_rhAmpSeq_loci, parallel = T, pairs = rhAmpSeq_Monoclonal_pairs, max_k = 20,
-              w = w, n = 1000
+              w = w, n = 10000
             ))
     end_time = Sys.time()
     print(paste0('Window ', w, ' done in:'))
@@ -302,31 +382,21 @@ Monoclonal_pairs_rhAmpSeq_01SNPsbiallelic_75_IBD %>%
 
 evectors_rhAmpSeq_world_regions = GRM_evectors(dist_table = Monoclonal_pairs_rhAmpSeq_01SNPsbiallelic_75_IBD, 
                                               k = nrow(monoclonals_rhAmpSeq_loci@metadata %>%
-                                                         filter(Sample_id %in% selected_samples_ids, 
-                                                                site_of_collection_world_region != 'Pv4')
+                                                         filter(Sample_id %in% selected_samples_ids,
+                                                                !(Sample_id %in% AF_outliers),
+                                                                !(Sample_id %in% Asia_outliers),
+                                                                !(Sample_id %in% LAC_outliers),
+                                                                possible_origin != 'Imported')
                                               ),
                                               metadata = monoclonals_rhAmpSeq_loci@metadata%>%
-                                                filter(Sample_id %in% selected_samples_ids, site_of_collection_world_region != 'Pv4'),
+                                                filter(Sample_id %in% selected_samples_ids,
+                                                       !(Sample_id %in% AF_outliers),
+                                                       !(Sample_id %in% Asia_outliers),
+                                                       !(Sample_id %in% LAC_outliers),
+                                                       possible_origin != 'Imported'),
                                               Pop = 'site_of_collection_world_region',
                                               method = 'princomp'
 )
-
-
-monoclonals_rhAmpSeq_loci@markers$amplicon = sapply(1:nrow(monoclonals_rhAmpSeq_loci@markers), function(i){
-  
-  variant_site_chromosome = gsub('v1$', 'v2', monoclonals_rhAmpSeq_loci@markers[i, ][['chromosome']])
-  variant_site_position = monoclonals_rhAmpSeq_loci@markers[i, ][['pos']]
-  
-  rhAmpSeq_markers[rhAmpSeq_markers$chromosome == variant_site_chromosome &
-                     rhAmpSeq_markers$start <= variant_site_position &
-                     rhAmpSeq_markers$end >= variant_site_position,
-  ][['amplicon']]
-  
-})
-
-nrow(rhAmpSeq_markers)
-
-length(unique(monoclonals_rhAmpSeq_loci@markers$amplicon))
 
 
 
@@ -341,17 +411,18 @@ PCoA_no_clonal_rhAmpSeq_world_regions = evectors_rhAmpSeq_world_regions$eigenvec
     palette = 'Paired')+
   theme_minimal()+
   labs(title = paste0('D) World regions using ', 
-                      nrow(monoclonals_rhAmpSeq_loci@markers %>% filter(type_of_polymorphism == 'SNP')), 
-                      ' SNPs from\n',
+                      nrow(monoclonals_rhAmpSeq_loci@markers), 
+                      ' variant sites\n across ',
                       length(unique(monoclonals_rhAmpSeq_loci@markers$amplicon)),
-                      ' partial amplicons from Pv rhAmpSeq'),
+                      '/', nrow(rhAmpSeq_markers),
+                      ' rhAmpSeq amplicons'),
     x = paste0('PCoA 1 (', round(evectors_rhAmpSeq_world_regions$contrib[1], 2), '%)'),
     y = paste0('PCoA 2 (', round(evectors_rhAmpSeq_world_regions$contrib[2], 2), '%)'),
     color = 'Study sites',
     shape = 'Study sites'
   ) +
-  theme(legend.position = 'bottom',
-        legend.justification = 'left',
+  theme(legend.position = 'none',
+        #legend.justification = 'left',
         text = element_text(size = 12),
         axis.text = element_text(size = 12),
         title = element_text(size = 12)) +
@@ -389,7 +460,12 @@ monoclonals_rhAmpSeq_LAC_rGenome = filter_loci(monoclonals_rhAmpSeq_LAC_rGenome,
                                               monoclonals_rhAmpSeq_LAC_rGenome@loci_table$Cardinality >= 2)
 
 dim(monoclonals_rhAmpSeq_LAC_rGenome@gt)
+print(paste0('the number of amplicons with partial coverage in the data set is: ', length(unique(monoclonals_rhAmpSeq_LAC_rGenome@loci_table$amplicon))))
 
+monoclonals_rhAmpSeq_LAC_rGenome@metadata  %>%
+  summarise(nSamples = n(), 
+            .by = c(site_of_collection_world_region, site_of_collection_snl0)) %>%
+  arrange(site_of_collection_world_region, site_of_collection_snl0)
 
 # Calculate minor allele frequency
 rhAmpSeq_major_freq = sapply(monoclonals_rhAmpSeq_LAC_rGenome@loci_table$Allele_Counts, function(allele_counts){
@@ -401,16 +477,17 @@ rhAmpSeq_major_freq = sapply(monoclonals_rhAmpSeq_LAC_rGenome@loci_table$Allele_
 hist(rhAmpSeq_major_freq)
 
 max(rhAmpSeq_major_freq)
-1 - 5/486
+1 - 5/ncol(monoclonals_PvAmpliSeq_LAC_rGenome@gt)
 
-sum(rhAmpSeq_major_freq <= 1 - 5/486)
+sum(rhAmpSeq_major_freq <= 1 - 5/ncol(monoclonals_rhAmpSeq_LAC_rGenome@gt))
 
 monoclonals_rhAmpSeq_LAC_rGenome@loci_table$major_freq = rhAmpSeq_major_freq
 
 monoclonals_rhAmpSeq_LAC_rGenome = filter_loci(monoclonals_rhAmpSeq_LAC_rGenome,
-                                              v = monoclonals_rhAmpSeq_LAC_rGenome@loci_table$major_freq <= 1 - 5/486)
+                                              v = monoclonals_rhAmpSeq_LAC_rGenome@loci_table$major_freq <= 1 - 5/ncol(monoclonals_rhAmpSeq_LAC_rGenome@gt))
 
 dim(monoclonals_rhAmpSeq_LAC_rGenome@gt)
+print(paste0('the number of amplicons with partial coverage in the data set is: ', length(unique(monoclonals_rhAmpSeq_LAC_rGenome@loci_table$amplicon))))
 
 # sum(monoclonals_rhAmpSeq_LAC_rGenome@loci_table$type_of_polymorphism != 'SNP')
 # 
@@ -433,7 +510,7 @@ dim(monoclonals_rhAmpSeq_LAC_loci@loci_table)
 
 
 monoclonals_rhAmpSeq_LAC_loci@markers = 
-  monoclonals_rhAmpSeq_LAC_rGenome@loci_table %>% rename('CHROM' = 'chromosome',
+  monoclonals_rhAmpSeq_LAC_rGenome@loci_table %>% S4Vectors::rename('CHROM' = 'chromosome',
                                                         'POS' = 'pos')
 
 
@@ -443,9 +520,9 @@ rownames(monoclonals_rhAmpSeq_LAC_loci@loci_table)
 
 # Monoclonal pairs ----
 
-Monoclonals = monoclonals_rhAmpSeq_LAC_loci@metadata$Sample_id
+rhAmpSeq_Monoclonals_LAC = monoclonals_rhAmpSeq_LAC_loci@metadata$Sample_id
 
-rhAmpSeq_LAC_Monoclonal_pairs = as.data.frame(t(combn(Monoclonals, 2)))
+rhAmpSeq_LAC_Monoclonal_pairs = as.data.frame(t(combn(rhAmpSeq_Monoclonals_LAC, 2)))
 
 names(rhAmpSeq_LAC_Monoclonal_pairs) = c('Yi', 'Yj')
 
@@ -469,13 +546,13 @@ names(rhAmpSeq_LAC_Monoclonal_pairs) = c('Yi', 'Yj', 'Yi_site_of_collection_snl0
 if(!file.exists('~/Documents/Github/PvGTSeq_paper_draft/Outputs/Monoclonal_LAC_pairs_rhAmpSeq_01SNPsbiallelic_75_IBD.csv')){
   
   Monoclonal_LAC_pairs_rhAmpSeq_01SNPsbiallelic_75_IBD = NULL
-  for(w in 1:500){
+  for(w in 1:5000){
     start_time = Sys.time()
     Monoclonal_LAC_pairs_rhAmpSeq_01SNPsbiallelic_75_IBD = 
       rbind(Monoclonal_LAC_pairs_rhAmpSeq_01SNPsbiallelic_75_IBD,
             pairwise_hmmIBD(
               obj = monoclonals_rhAmpSeq_LAC_loci, parallel = T, pairs = rhAmpSeq_LAC_Monoclonal_pairs, max_k = 20,
-              w = w, n = 500
+              w = w, n = 5000
             ))
     end_time = Sys.time()
     print(paste0('Window ', w, ' done in:'))
@@ -524,31 +601,18 @@ Monoclonal_LAC_pairs_rhAmpSeq_01SNPsbiallelic_75_IBD %>%
 
 evectors_rhAmpSeq_LAC = GRM_evectors(dist_table = Monoclonal_LAC_pairs_rhAmpSeq_01SNPsbiallelic_75_IBD, 
                                     k = nrow(monoclonals_rhAmpSeq_LAC_loci@metadata %>%
-                                               filter(Sample_id %in% selected_LAC_samples_ids,
-                                                      !(site_of_collection_snl0 %in% c('El Salvador', 'Nicaragua')))
+                                               filter(Sample_id %in% selected_samples_ids,
+                                                      !(Sample_id %in% LAC_outliers),
+                                                      !(Sample_id %in% Brazil_outliers),
+                                                      !(site_of_collection_snl0 %in% c('El Salvador', 'Nicaragua', 'USA', 'Trinidad', 'Guatemala', 'FrenchGuiana')))
                                     ),
                                     metadata = monoclonals_rhAmpSeq_LAC_loci@metadata%>%
-                                      filter(Sample_id %in% selected_LAC_samples_ids,
-                                             !(site_of_collection_snl0 %in% c('El Salvador', 'Nicaragua'))),
+                                      filter(Sample_id %in% selected_samples_ids,
+                                             !(Sample_id %in% LAC_outliers),
+                                             !(Sample_id %in% Brazil_outliers),
+                                             !(site_of_collection_snl0 %in% c('El Salvador', 'Nicaragua', 'USA', 'Trinidad', 'Guatemala', 'FrenchGuiana'))),
                                     Pop = 'site_of_collection_snl0',
                                     method = 'princomp')
-
-
-monoclonals_rhAmpSeq_LAC_loci@markers$amplicon = sapply(1:nrow(monoclonals_rhAmpSeq_LAC_loci@markers), function(i){
-  
-  variant_site_chromosome = gsub('v1$', 'v2', monoclonals_rhAmpSeq_LAC_loci@markers[i, ][['chromosome']])
-  variant_site_position = monoclonals_rhAmpSeq_LAC_loci@markers[i, ][['pos']]
-  
-  rhAmpSeq_markers[rhAmpSeq_markers$chromosome == variant_site_chromosome &
-                     rhAmpSeq_markers$start <= variant_site_position &
-                     rhAmpSeq_markers$end >= variant_site_position,
-  ][['amplicon']]
-  
-})
-
-nrow(rhAmpSeq_markers)
-
-length(unique(monoclonals_rhAmpSeq_LAC_loci@markers$amplicon))
 
 
 PCoA_no_clonal_rhAmpSeq_LAC = evectors_rhAmpSeq_LAC$eigenvector %>%
@@ -562,9 +626,10 @@ PCoA_no_clonal_rhAmpSeq_LAC = evectors_rhAmpSeq_LAC$eigenvector %>%
   theme_minimal()+
   labs(title = paste0('D) LAC countries using ', 
                       nrow(monoclonals_rhAmpSeq_LAC_loci@markers %>% filter(type_of_polymorphism == 'SNP')), 
-                      ' SNPs from\n',
+                      ' variant sites \n across ',
                       length(unique(monoclonals_rhAmpSeq_LAC_loci@markers$amplicon)),
-                      ' partial amplicons from Pv rhAmpSeq'),
+                      '/', nrow(rhAmpSeq_markers),
+                      ' rhAmpSeq amplicons'),
     x = paste0('PCoA 1 (', round(evectors_rhAmpSeq_LAC$contrib[1], 2), '%)'),
     y = paste0('PCoA 2 (', round(evectors_rhAmpSeq_LAC$contrib[2], 2), '%)'),
     color = 'Study sites',
@@ -574,89 +639,12 @@ PCoA_no_clonal_rhAmpSeq_LAC = evectors_rhAmpSeq_LAC$eigenvector %>%
         legend.justification = 'left',
         text = element_text(size = 12),
         axis.text = element_text(size = 12),
-        title = element_text(size = 10))# +
+        title = element_text(size = 12))# +
   # guides(color = guide_legend(ncol = 4,
   #                             theme = theme(legend.title.position = 'left'
   #                             )))
 
 PCoA_no_clonal_rhAmpSeq_LAC
-
-
-
-
-
-rhAmpSeq_ampseq = 
-  read_ampseq(file = '~/Documents/Github/PvGTSeq_paper_draft/Pv_Amplicon_data/all_broad_Pv4_rhAmpSeq_ampseq/', 
-              format = 'tsv',
-              sep = '\t')
-
-
-rhAmpSeq_ampseq@metadata %<>% mutate(
-  site_of_collection_world_region = 
-    case_when(grepl('Latin', possible_site_of_infection_world_region) ~ 'LAC',
-              site_of_collection_snl0  == 'Thailand' ~ 'WSEA',
-              site_of_collection_snl0 == 'China' ~ 'EAS',
-              site_of_collection_snl0 == 'Bangladesh' ~ 'WSEA',
-              site_of_collection_snl0 == 'Bhutan' ~ 'WSEA',
-              site_of_collection_snl0 == 'Madagascar' ~ 'AF',
-              site_of_collection_snl0 == 'Mauritania' ~ 'AF',
-              site_of_collection_snl0 == 'Myanmar' ~ 'WSEA',
-              site_of_collection_snl0 == 'North Korea' ~ 'EAS',
-              site_of_collection_snl0 == 'Sudan' ~ 'AF',
-              possible_site_of_infection_world_region == '' & site_of_collection_snl0 == 'Panama' ~ 'LAC',
-              possible_site_of_infection_world_region == '' & site_of_collection_snl0 == 'Venezuela' ~ 'LAC',
-              possible_site_of_infection_world_region == '' & site_of_collection_snl0 == 'Guyana' ~ 'LAC',
-              possible_site_of_infection_world_region == 'West Africa' ~ 'AF',
-              possible_site_of_infection_world_region == 'Asia' ~ 'WAS',
-              .default = possible_site_of_infection_world_region))
-
-
-rhAmpSeq_ampseq = filter_samples(rhAmpSeq_ampseq, rhAmpSeq_ampseq@metadata$site_of_collection_world_region != 'Pv4')
-
-rhAmpSeq_ampseq@markers$pos = round(rhAmpSeq_ampseq@markers$end - rhAmpSeq_ampseq@markers$start)
-
-rhAmpSeq_ampseq = filter_loci(obj = rhAmpSeq_ampseq, v = rhAmpSeq_ampseq@markers$amplicon %in% rhAmpSeq_markers$amplicon, skip_errors = T)
-
-rhAmpSeq_coverage = get_ReadDepth_coverage(rhAmpSeq_ampseq, variable = 'site_of_collection_world_region')
-
-rhAmpSeq_coverage$plot_read_depth_heatmap
-
-rhAmpSeq_locusAmpRate = locus_amplification_rate(rhAmpSeq_ampseq, 
-                                                 threshold = .75,
-                                                 strata = 'site_of_collection_world_region', update_loci = F)
-
-
-ggdraw() + 
-  draw_plot(PvGTSeq_locusAmpRate$all_loci_performance_plot +
-              labs(title = paste0('A) PvGTSeq (', nrow(PvGTSeq_markers), ')'),
-                   y = '# of Amplicons',
-                   x = 'Propottion of amplified samples') +
-              theme(axis.text = element_text(size = 11),
-                    axis.title = element_text(size = 11)),
-            x = 0, 
-            width = .33,
-            y = 0, 
-            height = 1) +
-  draw_plot(PvAmpliSeq_locusAmpRate$all_loci_performance_plot +
-              labs(title = paste0('B) PvAmpliSeq (', nrow(PvAmpliSeq_markers), ')'),
-                   y = '# of Amplicons',
-                   x = 'Propottion of amplified samples') +
-              theme(axis.text = element_text(size = 11),
-                    axis.title = element_text(size = 11)),
-            x = .33, 
-            width = .33,
-            y = 0, 
-            height = 1) +
-  draw_plot(rhAmpSeq_locusAmpRate$all_loci_performance_plot +
-              labs(title = paste0('C) rhAmpSeq (', nrow(rhAmpSeq_markers), ')'),
-                   y = '# of Amplicons',
-                   x = 'Propottion of amplified samples') +
-              theme(axis.text = element_text(size = 11),
-                    axis.title = element_text(size = 11)),
-            x = .66, 
-            width = .34,
-            y = 0, 
-            height = 1)
 
 
 if(!file.exists('~/Documents/Github/PvGTSeq_paper_draft/Outputs/summary_IBDclusters_rhAmpSeq_LAC.tsv')){
@@ -767,27 +755,70 @@ summary_IBDclusters_rhAmpSeq_LAC %>%
 
 
 
-rhAmpSeq_LAC_network_048  = plot_ggnetwork(pairwise_relatedness = Monoclonal_LAC_pairs_rhAmpSeq_01SNPsbiallelic_75_IBD,
-                                          threshold = 0.47, 
-                                          metadata = monoclonals_rhAmpSeq_LAC_loci@metadata,
+rhAmpSeq_LAC_network_100  = plot_ggnetwork(pairwise_relatedness = Monoclonal_LAC_pairs_rhAmpSeq_01SNPsbiallelic_75_IBD,
+                                          threshold = 1, 
+                                          metadata = monoclonals_rhAmpSeq_LAC_loci@metadata %>%
+                                            filter(!(Sample_id %in% LAC_outliers),
+                                                   !(site_of_collection_snl0 %in% c('El Salvador', 'Nicaragua', 'USA', 'Trinidad', 'Guatemala', 'FrenchGuiana'))),
                                           sample_id = 'Sample_id',
                                           color_by = 'site_of_collection_snl0', vertex.size = 4)
 
-rhAmpSeq_LAC_network_048$plot_network
+rhAmpSeq_LAC_network_100$plot_network
 
-rhAmpSeq_LAC_network_042 = plot_ggnetwork(pairwise_relatedness = Monoclonal_LAC_pairs_rhAmpSeq_01SNPsbiallelic_75_IBD,
-                                         threshold = 0.43, 
-                                         metadata = monoclonals_rhAmpSeq_LAC_loci@metadata,
+rhAmpSeq_LAC_network_065  = plot_ggnetwork(pairwise_relatedness = Monoclonal_LAC_pairs_rhAmpSeq_01SNPsbiallelic_75_IBD,
+                                          threshold = 0.65, 
+                                          metadata = monoclonals_rhAmpSeq_LAC_loci@metadata %>%
+                                            filter(!(Sample_id %in% LAC_outliers),
+                                                   !(site_of_collection_snl0 %in% c('El Salvador', 'Nicaragua', 'USA', 'Trinidad', 'Guatemala', 'FrenchGuiana'))),
+                                          sample_id = 'Sample_id',
+                                          color_by = 'site_of_collection_snl0', vertex.size = 4)
+
+rhAmpSeq_LAC_network_065$plot_network
+
+rhAmpSeq_LAC_network_061 = plot_ggnetwork(pairwise_relatedness = Monoclonal_LAC_pairs_rhAmpSeq_01SNPsbiallelic_75_IBD,
+                                         threshold = 0.61, 
+                                         metadata = monoclonals_rhAmpSeq_LAC_loci@metadata %>%
+                                           filter(!(Sample_id %in% LAC_outliers),
+                                                  !(site_of_collection_snl0 %in% c('El Salvador', 'Nicaragua', 'USA', 'Trinidad', 'Guatemala', 'FrenchGuiana'))),
                                          sample_id = 'Sample_id',
                                          color_by = 'site_of_collection_snl0', vertex.size = 4)
 
-rhAmpSeq_LAC_network_042$plot_network
+rhAmpSeq_LAC_network_061$plot_network
 
 
-rhAmpSeq_LAC_network_036  = plot_ggnetwork(pairwise_relatedness = Monoclonal_LAC_pairs_rhAmpSeq_01SNPsbiallelic_75_IBD,
-                                          threshold = 0.37, 
-                                          metadata = monoclonals_rhAmpSeq_LAC_loci@metadata,
+rhAmpSeq_LAC_network_050 = plot_ggnetwork(pairwise_relatedness = Monoclonal_LAC_pairs_rhAmpSeq_01SNPsbiallelic_75_IBD,
+                                         threshold = 0.5, 
+                                         metadata = monoclonals_rhAmpSeq_LAC_loci@metadata %>%
+                                           filter(!(Sample_id %in% LAC_outliers),
+                                                  !(site_of_collection_snl0 %in% c('El Salvador', 'Nicaragua', 'USA', 'Trinidad', 'Guatemala', 'FrenchGuiana'))),
+                                         sample_id = 'Sample_id',
+                                         color_by = 'site_of_collection_snl0', vertex.size = 4)
+
+rhAmpSeq_LAC_network_050$plot_network
+
+
+rhAmpSeq_LAC_network_034  = plot_ggnetwork(pairwise_relatedness = Monoclonal_LAC_pairs_rhAmpSeq_01SNPsbiallelic_75_IBD,
+                                          threshold = 0.34, 
+                                          metadata = monoclonals_rhAmpSeq_LAC_loci@metadata %>%
+                                            filter(!(Sample_id %in% LAC_outliers),
+                                                   !(site_of_collection_snl0 %in% c('El Salvador', 'Nicaragua', 'USA', 'Trinidad', 'Guatemala', 'FrenchGuiana'))),
                                           sample_id = 'Sample_id',
                                           color_by = 'site_of_collection_snl0', vertex.size = 4)
 
-rhAmpSeq_LAC_network_036$plot_network
+rhAmpSeq_LAC_network_034$plot_network
+
+
+
+rhAmpSeq_clusters = plot_network(pairwise_relatedness = Monoclonal_LAC_pairs_rhAmpSeq_01SNPsbiallelic_75_IBD,  
+                                threshold = .98,
+                                metadata = monoclonals_rhAmpSeq_LAC_loci@metadata,
+                                sample_id = 'Sample_id',
+                                levels = monoclonals_rhAmpSeq_LAC_loci@metadata %>%
+                                  select(site_of_collection_snl0) %>% unlist() %>% unique(),
+                                group_by = 'site_of_collection_snl0',
+                                colors = brewer.pal(11, 'Set3'),
+                                vertex.size = 4,
+                                method = 'fruchtermanreingold')
+
+
+
