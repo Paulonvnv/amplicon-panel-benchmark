@@ -15144,9 +15144,12 @@ cigar_strings2fasta = function(obj,
 
 
 # pairwise_euclidean----
-pairwise_euclidean = function(obj = NULL, parallel = TRUE, w = 1, n = 100, alpha = 0.05, method = 'exact', pairs = NULL, Filter_loci = NULL, skip_errors=  FALSE){
+pairwise_euclidean = function(obj = NULL, parallel = TRUE, w = 1, n = 100, alpha = 0.05, method = 'exact', pairs = NULL, Filter_loci = NULL, skip_errors=  FALSE, doMC_package = F){
   library(parallel)
-  library(doMC)
+  if(doMC_package){
+    library(doMC)}else{
+      library(doParallel)
+  }
   library(svMisc)
   
   if(!is.null(Filter_loci)){
@@ -15194,7 +15197,18 @@ pairwise_euclidean = function(obj = NULL, parallel = TRUE, w = 1, n = 100, alpha
   }
   
   if(parallel){
-    registerDoMC(detectCores())
+    if(doMC_package){
+      registerDoMC(detectCores())}else{
+        
+        ncl = detectCores() - 1
+        
+        cl = makePSOCKcluster(ncl)
+        
+        clusterExport(cl, envir = environment())
+        
+        registerDoParallel(cl)
+        
+      }
     pairwise_df = foreach(pair = 1:nrow(pairs), .combine = 'rbind') %dopar% {
       
       Yi_id = pairs[pair, 1]
@@ -15249,6 +15263,8 @@ pairwise_euclidean = function(obj = NULL, parallel = TRUE, w = 1, n = 100, alpha
       data.frame(Yi = Yi_id, Yj = Yj_id, estimate)
       
     }
+    
+    stopCluster(cl)
     
   }else{
     

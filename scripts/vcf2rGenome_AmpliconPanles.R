@@ -1,15 +1,21 @@
 
-# Get functions and libraries----
+wd = 'C:/Users/jerry/Documentos/GitHub/amplicon-panel-benchmark/src/'
+fd = 'C:/Users/jerry/Documentos/GitHub/amplicon-panel-benchmark/src'
+rd = 'C:/Users/jerry/Documentos/GitHub/amplicon-panel-benchmark/docs/reference/Pviv_P01'
 
-source('~/Documents/Github/MHap-Analysis/docs/functions_and_libraries/amplseq_required_libraries.R')
-source('~/Documents/Github/Plasmodium_WGS_analysis/functions_libraries/rGenome_functions.R')
-source('~/Documents/Github/MHap-Analysis/docs/functions_and_libraries/amplseq_functions.R')
-sourceCpp('~/Documents/Github/MHap-Analysis/docs/functions_and_libraries/Rcpp_functions.cpp')
-sourceCpp('~/Documents/Github/MHap-Analysis/docs/functions_and_libraries/hmmloglikelihood.cpp')
+# Get functions and libraries----
+source(file.path(fd, 'amplseq_required_libraries.R'))
+source(file.path(fd, 'functions/amplseq_functions.R'))
+source(file.path(fd, 'functions/rGenome_functions.R'))
+
+sourceCpp(file.path(fd, 'functions/Rcpp_functions.cpp'))
+sourceCpp(file.path(fd, 'functions/hmmloglikelihood.cpp'))
+
+install.packages('Rtools')
 
 # PvGTSeq ----
 
-PvGTSeq_markers = read.csv('~/Documents/Github/MHap-Analysis/docs/reference/Pviv_P01/PvGTSeq249_markersTable.csv')
+PvGTSeq_markers = read.csv(files.path(rd,'PvGTSeq249_markersTable.csv'))
 
 PvGTSeq_markers %<>% filter(use !='DRS')
 

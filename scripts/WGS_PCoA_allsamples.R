@@ -1,17 +1,23 @@
 #where_is_the_script
+
+fd = 'C:/Users/jerry/Documentos/GitHub/amplicon-panel-benchmark/src'
+wd = 'C:/Users/jerry/Documentos/GitHub/amplicon-panel-benchmark/docs'
+
+
 # Load libraries----
-source('~/Documents/Github/MHap-Analysis/docs/functions_and_libraries/amplseq_required_libraries.R')
-source('~/Documents/Github/Plasmodium_WGS_analysis/functions_libraries/rGenome_functions.R')
-source('~/Documents/Github/MHap-Analysis/docs/functions_and_libraries/amplseq_functions.R')
-sourceCpp('~/Documents/Github/MHap-Analysis/docs/functions_and_libraries/Rcpp_functions.cpp')
-sourceCpp('~/Documents/Github/MHap-Analysis/docs/functions_and_libraries/hmmloglikelihood.cpp')
+source(file.path(fd, 'amplseq_required_libraries.R'))
+source(file.path(fd, 'functions/rGenome_functions.R'))
+source(file.path(fd, 'functions/amplseq_functions.R'))
+
+sourceCpp(file.path(fd, 'functions/Rcpp_functions.cpp'))
+sourceCpp(file.path(fd, 'functions/hmmloglikelihood.cpp'))
 
 
-if(!file.exists('~/Documents/Github/PvGTSeq_paper_draft/Pv_Amplicon_data/WGS_all_samples_rGenome_allelesupdated')){
+if(!file.exists(file.path(wd,'WGS_data/WGS_all_samples_rGenome_allelesupdated'))){
   
   # Load Genome data-----
   
-  WGS_all_samples_rGenome = read_rGenome('~/Documents/Github/PvGTSeq_paper_draft/Pv_Amplicon_data/WGS_all_samples_rGenome', format = 'tsv', sep = '\t')
+  WGS_all_samples_rGenome = read_rGenome(file.path(wd, 'WGS_data/WGS_all_samples_rGenome'), format = 'tsv', sep = '\t')
   
   sum(colnames(WGS_all_samples_rGenome@gt) != WGS_all_samples_rGenome@metadata$Sample_id)
   colnames(WGS_all_samples_rGenome@gt) = WGS_all_samples_rGenome@metadata$Sample_id
@@ -74,10 +80,26 @@ if(!file.exists('~/Documents/Github/PvGTSeq_paper_draft/Pv_Amplicon_data/WGS_all
 }else{
   
   WGS_all_samples_rGenome = read_rGenome(
-    file = '~/Documents/Github/PvGTSeq_paper_draft/Pv_Amplicon_data/WGS_all_samples_rGenome_allelesupdated',
+    file = file.path(wd, 'WGS_data/WGS_all_samples_rGenome_allelesupdated'),
     format = 'tsv',
     sep = '\t')
 }
+
+colnames(PvAmpliSeq_markers)
+
+slotNames(WGS_all_samples_rGenome)
+
+#slot(WGS_all_samples_rGenome,name = 'gt')
+
+class(WGS_all_samples_rGenome@gt)
+
+WGS_all_samples_rGenome@gt[1:10,1:13]
+
+WGS_all_samples_rGenome@loci_table[1:10,]
+
+WGS_all_samples_rGenome@metadata[1:10,1:15]
+
+# Corregir error en el nombre de columnas
 
 sum(colnames(WGS_all_samples_rGenome@gt) != WGS_all_samples_rGenome@metadata$Sample_id)
 colnames(WGS_all_samples_rGenome@gt) = WGS_all_samples_rGenome@metadata$Sample_id
@@ -101,6 +123,7 @@ WGS_all_samples_rGenome = filter_loci(WGS_all_samples_rGenome,
                                                v = WGS_all_samples_rGenome@loci_table$Cardinality > 1)
 
 dim(WGS_all_samples_rGenome@gt)
+dim(WGS_all_samples_rGenome@loci_table)
 
 # Calculate minor allele frequency
 major_freq = sapply(WGS_all_samples_rGenome@loci_table$Allele_Counts, function(allele_counts){
@@ -111,7 +134,7 @@ major_freq = sapply(WGS_all_samples_rGenome@loci_table$Allele_Counts, function(a
 
 WGS_all_samples_rGenome@loci_table$major_freq = major_freq
 
-gene_description = get_gene_description_rGenome(WGS_all_samples_rGenome@loci_table, gff = '~/Documents/Github/MHap-Analysis/docs/reference/Pviv_P01/PlasmoDB-67_PvivaxP01.gff')
+gene_description = get_gene_description_rGenome(WGS_all_samples_rGenome@loci_table, gff = file.path(wd, 'reference/Pviv_P01/PlasmoDB-67_PvivaxP01.gff'))
 
 WGS_all_samples_rGenome@loci_table = cbind(WGS_all_samples_rGenome@loci_table,
                                            gene_description)
@@ -240,8 +263,10 @@ WGS_all_samples_rGenome_01SNPsbiallelic_75@metadata$Fws = get_Fws_rGenome(obj = 
 WGS_all_samples_rGenome_01SNPsbiallelic_75@metadata %>%
   ggplot(aes(y = Fws, x = ObsHet)) +
   geom_point(alpha = .3) + 
-  geom_hline(yintercept = .975)+
-  geom_vline(xintercept = .005)
+  geom_hline(yintercept = .975) +
+  geom_vline(xintercept = .005) +
+  scale_x_continuous(limits = c(0, .1)) +
+  scale_y_continuous(limits = c(.8, 1))
 
 # Define monoclonal and polyclonal infections----
 Monoclonals = WGS_all_samples_rGenome_01SNPsbiallelic_75@metadata %>%
@@ -273,30 +298,6 @@ WGS_all_samples_rGenome_01SNPsfINDELs_75@metadata$Clonality =
   WGS_all_samples_rGenome_01SNPsbiallelic_75@metadata$Clonality
 
 
-# Generate table of all pairwise comparisons----
-
-all_pairs_full = as.data.frame(t(combn(WGS_all_samples_rGenome_01SNPsfINDELs_75@metadata$Sample_id, 2)))
-
-names(all_pairs_full) = c('Yi', 'Yj')
-
-all_pairs_full = left_join(
-  all_pairs_full,
-  WGS_all_samples_rGenome_01SNPsfINDELs_75@metadata[,c('Sample_id', 'site_of_collection_snl0')],
-  by = join_by('Yi' == 'Sample_id'))
-
-names(all_pairs_full) = c('Yi', 'Yj', 'Yi_site_of_collection_snl0')
-
-
-all_pairs_full = left_join(
-  all_pairs_full,
-  WGS_all_samples_rGenome_01SNPsfINDELs_75@metadata[,c('Sample_id', 'site_of_collection_snl0')],
-  by = join_by('Yj' == 'Sample_id'))
-
-names(all_pairs_full) = c('Yi', 'Yj', 'Yi_site_of_collection_snl0', 'Yj_site_of_collection_snl0')
-
-
-all_pairs_by_country = all_pairs_full %>% 
-  filter(Yi_site_of_collection_snl0 == Yj_site_of_collection_snl0)
 
 
 # Select monoclonal infections----
@@ -388,12 +389,12 @@ sum(rownames(monoclonals_PvBroad_SelectedPos2_01SNPsfINDELs_75_loci@loci_table) 
 if(!file.exists('~/Documents/Github/PvGTSeq_paper_draft/Outputs/Monoclonal_pairs_01SNPsbiallelic_75_dist.csv')){
   
   Monoclonal_pairs_01SNPsbiallelic_75_dist = NULL
-  for(w in 1:500){
+  for(w in 1:10){
     start_time = Sys.time()
     Monoclonal_pairs_01SNPsbiallelic_75_dist = 
       rbind(Monoclonal_pairs_01SNPsbiallelic_75_dist,
             pairwise_euclidean(
-              obj = monoclonals_PvBroad_SelectedPos2_01SNPsbiallelic_75_loci, parallel = T, pairs = Monoclonal_pairs,
+              obj = monoclonals_PvBroad_SelectedPos2_01SNPsbiallelic_75_loci, parallel = F, pairs = Monoclonal_pairs,
               w = w, n = 500
             ))
     end_time = Sys.time()

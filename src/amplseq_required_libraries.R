@@ -111,11 +111,18 @@ if(!require(ggpubr)){
   library(ggpubr)
 }
 
-if(!require(doMC)){
-  install.packages('doMC')
-  library(doMC)
+# if(!require(doMC)){
+#   install.packages('doMC')
+#   library(doMC)
+# }else{
+#   library(doMC)
+# }
+
+if(!require(doParallel)){
+  install.packages('doParallel')
+  library(doParallel)
 }else{
-  library(doMC)
+  library(doParallel)
 }
 
 if(!require(svMisc)){
@@ -133,6 +140,13 @@ if(!require(Biostrings)){
   library(Biostrings)
 }else{
   library(Biostrings)
+}
+
+if(!require(RcppEigen)){
+  install.packages('RcppEigen')
+  library(RcppEigen)
+}else{
+  library(RcppEigen)
 }
 
 if(!require(Rcpp)){
